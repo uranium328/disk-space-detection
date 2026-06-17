@@ -16,6 +16,9 @@
 ## 使用方式
 
 ```bash
+# 不帶參數：掃描所有固定磁碟（C/D/E…）並自動啟動伺服器模式
+python main.py
+
 # 掃描 C 槽與 D 槽，產生報告並自動開啟
 python main.py C: D:
 
@@ -51,7 +54,7 @@ python main.py C: --serve
 
 | 參數 | 說明 | 預設 |
 |------|------|------|
-| `drives` | 要掃描的磁碟代號或資料夾路徑，可多個 | （必填） |
+| `drives` | 要掃描的磁碟代號或資料夾路徑，可多個 | 不指定→掃所有固定磁碟＋伺服器模式 |
 | `-o, --output` | HTML 報告輸出路徑 | `disk_report.html` |
 | `--top` | 最大檔案/Treemap 顯示數量 | `50` |
 | `--min-size` | 低於此大小的項目在樹中摺疊（可寫 `500MB`/`2GB`） | `10MB` |
@@ -82,4 +85,5 @@ disk_scan/
   需要邏輯大小時加 `--logical`。
 - 本工具**只分析與呈現，不會刪除或搬移任何檔案**。
 - junction / symlink 會被跳過不遞迴，因此報告大小可能略小於檔案總管在某些情況下的顯示值。
-- `--flag-cleanup` 的標記僅供參考，刪除前請自行確認，尤其 `pagefile.sys`、`hiberfil.sys` 等系統檔請勿手動刪除。
+- `--flag-cleanup` 的標記僅供參考，刪除前請自行確認。由系統管理的 `pagefile.sys` / `swapfile.sys`
+  **不會**被標記為可清理；`hiberfil.sys` 會標記，但它的回收方式是停用休眠（`powercfg /h off`）而非刪檔。

@@ -8,7 +8,7 @@ import sys
 import webbrowser
 
 from .report import build_report
-from .scanner import human_size, parse_size, scan
+from .scanner import human_size, list_fixed_drives, parse_size, scan
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,11 +17,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="掃描磁碟/資料夾的空間佔用，產生互動式 HTML 報告。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="範例：\n"
+               "  python main.py                     # 不帶參數：掃所有固定磁碟 + 啟動伺服器\n"
                "  python main.py C: D: --output report.html\n"
                "  python main.py \"E:\\\\專案\" --min-size 100MB --top 30 --flag-cleanup",
     )
-    p.add_argument("drives", nargs="+",
-                   help="要掃描的磁碟代號或資料夾路徑，可多個（如 C: D: 或 E:\\folder）")
+    p.add_argument("drives", nargs="*",
+                   help="要掃描的磁碟代號或資料夾路徑，可多個（如 C: D: 或 E:\\folder）。"
+                        "不指定時自動掃描所有固定磁碟並啟動伺服器模式")
     p.add_argument("-o", "--output", default="disk_report.html",
                    help="HTML 報告輸出路徑（預設 disk_report.html）")
     p.add_argument("--top", type=int, default=50,
@@ -56,8 +58,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"無法解析 --min-size: {args.min_size!r}", file=sys.stderr)
         return 2
 
+    # 不帶任何磁碟參數 → 掃描所有固定磁碟並啟用伺服器模式
+    targets = args.drives
+    serve_mode = args.serve
+    if not targets:
+        targets = list_fixed_drives()
+        serve_mode = True
+        print(f"未指定目標 → 掃描所有固定磁碟並啟動伺服器：{' '.join(targets)}",
+              file=sys.stderr)
+
     results = []
-    for target in args.drives:
+    for target in targets:
         if not os.path.exists(target if len(target) != 2 or target[1] != ":" else target + "\\"):
             print(f"略過不存在的目標：{target}", file=sys.stderr)
             continue
@@ -85,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     abs_out = os.path.abspath(out)
     print(f"\n報告已產生：{abs_out}", file=sys.stderr)
 
-    if args.serve:
+    if serve_mode:
         from .server import serve
         roots = [r.root for r in results]
         serve(abs_out, roots, port=args.port, open_browser=not args.no_open)

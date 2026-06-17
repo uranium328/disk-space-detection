@@ -38,6 +38,31 @@ if os.name == "nt":
         _get_compressed_size = None
 
 
+DRIVE_FIXED = 3  # GetDriveTypeW：本機固定磁碟
+
+
+def list_fixed_drives() -> list:
+    """列出本機固定磁碟（DRIVE_FIXED）的根目錄，如 ['C:\\\\', 'D:\\\\']。
+
+    只回傳固定磁碟，刻意排除卸除式（USB）、光碟與網路磁碟機，避免誤掃。
+    """
+    if os.name != "nt":
+        return ["/"]
+    import string
+    try:
+        get_type = ctypes.windll.kernel32.GetDriveTypeW  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        get_type = None
+    drives = []
+    for letter in string.ascii_uppercase:
+        root = f"{letter}:\\"
+        if not os.path.exists(root):
+            continue
+        if get_type is None or get_type(root) == DRIVE_FIXED:
+            drives.append(root)
+    return drives
+
+
 def physical_size(path: str, logical: int) -> int:
     """回傳檔案在磁碟上的實際佔用位元組；失敗時退回 logical。"""
     if _get_compressed_size is None:

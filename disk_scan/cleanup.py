@@ -23,9 +23,8 @@ _RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"/appdata/local/pip/cache$", re.I), "pip 套件快取，可清理"),
     (re.compile(r"/appdata/local/npm-cache$", re.I), "npm 套件快取，可清理"),
     (re.compile(r"/windows/logs$", re.I), "Windows 記錄檔，可清理"),
-    (re.compile(r"/hiberfil\.sys$", re.I), "休眠檔；停用休眠可移除（powercfg /h off）"),
-    (re.compile(r"/pagefile\.sys$", re.I), "虛擬記憶體分頁檔；由系統管理，勿手動刪除"),
-    (re.compile(r"/swapfile\.sys$", re.I), "系統置換檔；由系統管理"),
+    (re.compile(r"/hiberfil\.sys$", re.I), "休眠檔；停用休眠可移除（powercfg /h off），非刪檔"),
+    # 注意：pagefile.sys / swapfile.sys 由系統管理、無法手動清除，刻意不標示為可清理。
 ]
 
 
