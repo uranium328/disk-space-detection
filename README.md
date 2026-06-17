@@ -42,6 +42,7 @@ python main.py C: --flag-cleanup
 | `--min-size` | 低於此大小的項目在樹中摺疊（可寫 `500MB`/`2GB`） | `10MB` |
 | `--max-depth` | 目錄樹展開深度上限 | 不限 |
 | `--flag-cleanup` | 標記常見可清理位置（僅標記不刪除） | 關閉 |
+| `--logical` | 改用邏輯大小（`st_size`）。預設為實際磁碟佔用 | 關閉 |
 | `--no-progress` | 不顯示掃描進度 | — |
 | `--no-open` | 完成後不自動開啟瀏覽器 | — |
 
@@ -58,6 +59,9 @@ disk_scan/
 
 ## 注意事項
 
+- 大小預設為**實際磁碟佔用（size on disk）**，透過 Windows `GetCompressedFileSizeW` 取得；
+  稀疏檔（如虛擬磁碟 `.img`/`.vhdx`）與壓縮檔會反映真實佔用，而非可能灌水的邏輯大小。
+  需要邏輯大小時加 `--logical`。
 - 本工具**只分析與呈現，不會刪除或搬移任何檔案**。
 - junction / symlink 會被跳過不遞迴，因此報告大小可能略小於檔案總管在某些情況下的顯示值。
 - `--flag-cleanup` 的標記僅供參考，刪除前請自行確認，尤其 `pagefile.sys`、`hiberfil.sys` 等系統檔請勿手動刪除。

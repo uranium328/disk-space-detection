@@ -12,7 +12,6 @@ Windows 注意事項：
 from __future__ import annotations
 
 import os
-import stat
 import sys
 import time
 from dataclasses import dataclass, field
@@ -20,6 +19,34 @@ from typing import Optional
 
 # Windows 檔案屬性：重新剖析點（junction / symlink / mount point）
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+# --- 取得「實際磁碟佔用」（size on disk）---------------------------------
+# 邏輯大小（st_size）對稀疏檔／壓縮檔會嚴重失真，例如 512GB 的稀疏 .img
+# 實際可能只佔幾 GB。GetCompressedFileSizeW 回傳檔案真正用掉的磁碟位元組數。
+_INVALID_FILE_SIZE = 0xFFFFFFFF
+_get_compressed_size = None
+if os.name == "nt":
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        _get_compressed_size = _k32.GetCompressedFileSizeW
+        _get_compressed_size.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
+        _get_compressed_size.restype = wintypes.DWORD
+    except Exception:
+        _get_compressed_size = None
+
+
+def physical_size(path: str, logical: int) -> int:
+    """回傳檔案在磁碟上的實際佔用位元組；失敗時退回 logical。"""
+    if _get_compressed_size is None:
+        return logical
+    high = wintypes.DWORD(0)
+    low = _get_compressed_size(_long_path(path), ctypes.byref(high))
+    if low == _INVALID_FILE_SIZE and ctypes.get_last_error() != 0:
+        return logical
+    return (high.value << 32) + low
 
 
 @dataclass
@@ -76,6 +103,7 @@ class ScanResult:
     largest_files: list = field(default_factory=list)  # [(size, path), ...] 已排序取 top
     inaccessible: list = field(default_factory=list)   # 無法存取的路徑
     elapsed: float = 0.0
+    size_mode: str = "physical"   # "physical"=實際佔用, "logical"=邏輯大小
     disk_total: int = 0
     disk_used: int = 0
     disk_free: int = 0
@@ -111,9 +139,10 @@ def _is_reparse(entry: os.DirEntry) -> bool:
 class _Aggregator:
     """掃描期間累積的彙整狀態與進度回饋。"""
 
-    def __init__(self, top_n: int, progress: bool):
+    def __init__(self, top_n: int, progress: bool, use_physical: bool):
         self.top_n = top_n
         self.progress = progress
+        self.use_physical = use_physical
         self.ext_sizes: dict[str, list[int]] = {}
         self.largest: list[tuple[int, str]] = []  # 維持為已排序（小->大）並截斷
         self.inaccessible: list[str] = []
@@ -168,6 +197,8 @@ def _scan_dir(path: str, name: str, agg: _Aggregator) -> Node:
                         if _is_reparse(entry):
                             continue
                         size = entry.stat(follow_symlinks=False).st_size
+                        if agg.use_physical:
+                            size = physical_size(entry.path, size)
                         ext = os.path.splitext(entry.name)[1].lower() or "（無副檔名）"
                         agg.add_file(size, entry.path, ext)
                         node.size += size
@@ -183,12 +214,14 @@ def _scan_dir(path: str, name: str, agg: _Aggregator) -> Node:
     return node
 
 
-def scan(root: str, top_n: int = 50, progress: bool = True) -> ScanResult:
+def scan(root: str, top_n: int = 50, progress: bool = True,
+         use_physical: bool = True) -> ScanResult:
     """掃描一個磁碟或資料夾，回傳 ScanResult。
 
     root: 例如 'C:\\\\'、'C:'、或任意資料夾路徑。
     top_n: 保留的最大單檔數量。
     progress: 是否於 stderr 顯示掃描進度。
+    use_physical: True 用實際磁碟佔用（size on disk），False 用邏輯大小。
     """
     # 正規化磁碟代號："C:" -> "C:\\"
     if len(root) == 2 and root[1] == ":":
@@ -197,7 +230,7 @@ def scan(root: str, top_n: int = 50, progress: bool = True) -> ScanResult:
     display_name = root
 
     start = time.time()
-    agg = _Aggregator(top_n=top_n, progress=progress)
+    agg = _Aggregator(top_n=top_n, progress=progress, use_physical=use_physical)
     tree = _scan_dir(root, display_name, agg)
     elapsed = time.time() - start
 
@@ -212,6 +245,7 @@ def scan(root: str, top_n: int = 50, progress: bool = True) -> ScanResult:
         largest_files=[(s, p) for s, p in sorted(agg.largest, reverse=True)],
         inaccessible=agg.inaccessible,
         elapsed=elapsed,
+        size_mode="physical" if use_physical else "logical",
     )
 
     # 磁碟整體使用量（若 root 落在某磁碟上）

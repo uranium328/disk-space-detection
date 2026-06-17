@@ -7,12 +7,11 @@
 
 from __future__ import annotations
 
-import html
 import json
 from datetime import datetime
 
 from . import cleanup as cleanup_mod
-from .scanner import ScanResult, human_size
+from .scanner import ScanResult
 
 # 取頁面層級顯示的設定
 _TREEMAP_TOP = 20      # treemap 顯示的頂層目錄數
@@ -43,6 +42,7 @@ def _result_to_payload(
 
     return {
         "root": res.root,
+        "size_mode": res.size_mode,
         "elapsed": round(res.elapsed, 2),
         "disk_total": res.disk_total,
         "disk_used": res.disk_used,
@@ -172,8 +172,11 @@ function human(n){
 }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
+const SIZE_MODE = (DATA.drives[0] && DATA.drives[0].size_mode === 'logical')
+  ? '邏輯大小' : '實際磁碟佔用（size on disk）';
 document.getElementById('meta').textContent =
-  '產生時間：' + DATA.generated + (DATA.flag_cleanup ? '　·　已啟用「常見可清理」標記' : '');
+  '產生時間：' + DATA.generated + '　·　大小依據：' + SIZE_MODE
+  + (DATA.flag_cleanup ? '　·　已啟用「常見可清理」標記' : '');
 
 // 分頁
 const tabs = document.getElementById('tabs');

@@ -32,6 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="目錄樹展開深度上限（預設不限）")
     p.add_argument("--flag-cleanup", action="store_true",
                    help="標記常見可清理位置（暫存/快取/休眠檔等；僅標記不刪除）")
+    p.add_argument("--logical", action="store_true",
+                   help="改用邏輯大小（st_size）。預設為實際磁碟佔用（size on disk），"
+                        "稀疏/壓縮檔會反映真實佔用")
     p.add_argument("--no-progress", action="store_true",
                    help="不顯示掃描進度")
     p.add_argument("--no-open", action="store_true",
@@ -54,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"略過不存在的目標：{target}", file=sys.stderr)
             continue
         print(f"開始掃描 {target} …", file=sys.stderr)
-        res = scan(target, top_n=args.top, progress=not args.no_progress)
+        res = scan(target, top_n=args.top, progress=not args.no_progress,
+                   use_physical=not args.logical)
         print(f"  完成：{human_size(res.tree.size)}、{res.tree.file_count:,} 個檔案、"
               f"耗時 {res.elapsed:.1f}s"
               + (f"、{len(res.inaccessible)} 個項目無法存取" if res.inaccessible else ""),
