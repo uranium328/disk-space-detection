@@ -1,0 +1,8 @@
+# 產出的報告
+*.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

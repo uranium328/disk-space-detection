@@ -1,0 +1,63 @@
+# 磁碟空間分析工具
+
+掃描指定磁碟（如 C:、D:）或資料夾，計算各目錄、檔案與檔案類型的空間佔用，
+並產生一份**自包含、離線可開**的互動式 HTML 報告，協助判斷是什麼佔用了空間。
+
+- 純 Python 標準函式庫，免安裝任何第三方套件
+- 互動式報告：磁碟總覽、Treemap、可折疊目錄樹、檔案類型分布、最大檔案 Top-N
+- 妥善處理 Windows 權限、junction/symlink（避免重複計算與迴圈）、長路徑
+- 可選的「常見可清理」標記（暫存/快取/休眠檔等，**僅標記、不刪除**）
+
+## 需求
+
+- Python 3.9 以上（已在 3.13 測試）
+- Windows（亦可在其他平台掃描資料夾）
+
+## 使用方式
+
+```bash
+# 掃描 C 槽與 D 槽，產生報告並自動開啟
+python main.py C: D:
+
+# 指定輸出檔名、只摺疊小於 100MB 的項目、最大檔案顯示 30 筆
+python main.py C: --output c_report.html --min-size 100MB --top 30
+
+# 先用小資料夾測試
+python main.py "E:\program\disk-space-detection" --output test.html
+
+# 啟用「常見可清理」標記
+python main.py C: --flag-cleanup
+```
+
+> 掃描系統磁碟時，部分受保護資料夾需要系統管理員權限才能完整統計。
+> 以一般權限執行不會崩潰，被擋下的路徑會列在報告的「無法存取的項目」區塊。
+
+## 參數
+
+| 參數 | 說明 | 預設 |
+|------|------|------|
+| `drives` | 要掃描的磁碟代號或資料夾路徑，可多個 | （必填） |
+| `-o, --output` | HTML 報告輸出路徑 | `disk_report.html` |
+| `--top` | 最大檔案/Treemap 顯示數量 | `50` |
+| `--min-size` | 低於此大小的項目在樹中摺疊（可寫 `500MB`/`2GB`） | `10MB` |
+| `--max-depth` | 目錄樹展開深度上限 | 不限 |
+| `--flag-cleanup` | 標記常見可清理位置（僅標記不刪除） | 關閉 |
+| `--no-progress` | 不顯示掃描進度 | — |
+| `--no-open` | 完成後不自動開啟瀏覽器 | — |
+
+## 專案結構
+
+```
+main.py                 進入點
+disk_scan/
+  scanner.py            掃描與大小聚合（核心）
+  report.py             產生自包含 HTML 報告
+  cleanup.py            「常見可清理」位置辨識
+  cli.py                參數解析與流程串接
+```
+
+## 注意事項
+
+- 本工具**只分析與呈現，不會刪除或搬移任何檔案**。
+- junction / symlink 會被跳過不遞迴，因此報告大小可能略小於檔案總管在某些情況下的顯示值。
+- `--flag-cleanup` 的標記僅供參考，刪除前請自行確認，尤其 `pagefile.sys`、`hiberfil.sys` 等系統檔請勿手動刪除。
