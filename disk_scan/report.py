@@ -134,8 +134,47 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .pct { flex:0 0 52px; text-align:right; color:var(--muted); font-size:12px; }
   .cleanup { color:var(--warn); font-size:11px; border:1px solid var(--warn);
              border-radius:4px; padding:0 5px; white-space:nowrap; }
-  .children { margin-left:18px; display:none; }
+  .children { margin-left:18px; display:none; border-left:1px solid #2a3340; padding-left:4px; }
   .children.open { display:block; }
+  /* 檢視切換工具列 */
+  .toolbar { display:flex; gap:8px; margin-bottom:12px; align-items:center; flex-wrap:wrap; }
+  .btn { padding:6px 12px; background:var(--panel2); border:1px solid #2a3340;
+         border-radius:6px; cursor:pointer; color:var(--muted); font-size:13px; }
+  .btn:hover { color:var(--text); }
+  .btn.active { background:var(--bar); color:#fff; border-color:var(--bar); }
+  .btn.ghost { margin-left:auto; }
+  /* 麵包屑 */
+  .breadcrumb { display:flex; flex-wrap:wrap; align-items:center; gap:2px;
+                padding:8px 10px; background:var(--panel2); border-radius:8px; margin-bottom:10px; }
+  .crumb { color:var(--accent); cursor:pointer; padding:2px 7px; border-radius:4px;
+           max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .crumb:hover { background:#2a3340; }
+  .crumb.current { color:var(--text); cursor:default; }
+  .crumb.current:hover { background:transparent; }
+  .crumb-sep { color:var(--muted); padding:0 1px; }
+  /* 下鑽清單 */
+  .drow { display:flex; align-items:center; gap:10px; padding:8px;
+          border-radius:6px; border-bottom:1px solid #20262f; }
+  .drow:nth-child(even) { background:#171d26; }
+  .drow.clickable { cursor:pointer; }
+  .drow.clickable:hover { background:#243042; }
+  .drow .ic { flex:0 0 18px; text-align:center; }
+  .drow .nm { flex:0 0 30%; max-width:30%; overflow:hidden;
+              text-overflow:ellipsis; white-space:nowrap; }
+  .drow.clickable .nm { color:var(--accent); }
+  .drow .chev { flex:0 0 14px; text-align:right; color:var(--muted); }
+  .uprow { color:var(--muted); }
+  /* 開啟資料夾按鈕 */
+  .openbtn { flex:0 0 auto; cursor:pointer; opacity:.5; padding:0 4px;
+             border-radius:4px; user-select:none; }
+  .openbtn:hover { opacity:1; background:#2a3340; }
+  /* 提示浮層 */
+  #toast { position:fixed; left:50%; bottom:28px;
+           transform:translateX(-50%) translateY(20px);
+           background:#243042; color:#fff; padding:10px 18px; border-radius:8px;
+           border:1px solid #3a4a5e; opacity:0; pointer-events:none;
+           transition:opacity .25s, transform .25s; z-index:99; max-width:80vw; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   /* treemap */
   .treemap { display:flex; flex-wrap:wrap; gap:3px; }
   .tile { background:var(--bar); border-radius:4px; padding:6px 8px; overflow:hidden;
@@ -171,6 +210,41 @@ function human(n){
   return v.toFixed(2)+' EB';
 }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function el(tag, cls){ const e=document.createElement(tag); if(cls) e.className=cls; return e; }
+
+// 「📂 開啟」：伺服器模式呼叫 /open 用檔案總管開啟；靜態模式退化為複製路徑
+const SERVED = location.protocol.indexOf('http') === 0;
+function openTarget(path){
+  if(!path) return;
+  if(SERVED){
+    fetch('/open?path=' + encodeURIComponent(path))
+      .then(r => r.json())
+      .then(j => toast(j.ok ? '已用檔案總管開啟' : ('無法開啟：' + (j.msg||''))))
+      .catch(() => toast('無法連線本機服務'));
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(path)
+      .then(() => toast('靜態模式無法直接開啟，已複製路徑，貼到檔案總管即可'))
+      .catch(() => toast('請手動複製：' + path));
+  } else {
+    toast('請手動複製：' + path);
+  }
+}
+function makeOpenBtn(path){
+  const b = el('span', 'openbtn');
+  b.textContent = '📂';
+  b.title = SERVED ? '用檔案總管開啟所在位置' : '複製路徑（靜態模式）';
+  b.onclick = (e) => { e.stopPropagation(); openTarget(path); };
+  return b;
+}
+let _toastTimer = null;
+function toast(msg){
+  let t = document.getElementById('toast');
+  if(!t){ t = el('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
 
 const SIZE_MODE = (DATA.drives[0] && DATA.drives[0].size_mode === 'logical')
   ? '邏輯大小' : '實際磁碟佔用（size on disk）';
@@ -234,14 +308,8 @@ function renderDrive(d, idx){
   tmSec.appendChild(tm);
   wrap.appendChild(tmSec);
 
-  // 目錄樹
-  const treeSec = document.createElement('section');
-  treeSec.innerHTML = '<h2>目錄樹（依大小排序）</h2><div class="hint">點擊 ▶ 展開子目錄。長條代表佔父層比例。</div>';
-  const treeRoot = document.createElement('div');
-  treeRoot.className = 'tree';
-  treeRoot.appendChild(renderNode(d.tree, d.tree.size, 0));
-  treeSec.appendChild(treeRoot);
-  wrap.appendChild(treeSec);
+  // 目錄瀏覽（下鑽 + 樹狀，可切換）
+  wrap.appendChild(buildNav(d));
 
   // 類型分布
   const extSec = document.createElement('section');
@@ -282,6 +350,111 @@ function renderDrive(d, idx){
   return wrap;
 }
 
+// 目錄瀏覽區：下鑽檢視（預設）與樹狀檢視可切換
+function buildNav(d){
+  const sec = el('section');
+  sec.innerHTML = '<h2>目錄瀏覽</h2>';
+
+  const bar = el('div', 'toolbar');
+  const btnDrill = el('div', 'btn active'); btnDrill.textContent = '下鑽檢視';
+  const btnTree  = el('div', 'btn');        btnTree.textContent  = '樹狀檢視';
+  const btnCollapse = el('div', 'btn ghost'); btnCollapse.textContent = '全部收合';
+  btnCollapse.style.display = 'none';
+  bar.append(btnDrill, btnTree, btnCollapse);
+  sec.appendChild(bar);
+
+  const hint = el('div', 'hint');
+  const body = el('div');
+  sec.append(hint, body);
+
+  function showDrill(){
+    btnDrill.classList.add('active'); btnTree.classList.remove('active');
+    btnCollapse.style.display = 'none';
+    hint.textContent = '點資料夾列進入下一層，上方麵包屑可跳回任一層。一次只看一層，不眼花。';
+    body.innerHTML = ''; body.appendChild(buildDrill(d));
+  }
+  function showTree(){
+    btnTree.classList.add('active'); btnDrill.classList.remove('active');
+    btnCollapse.style.display = '';
+    hint.textContent = '點 ▶ 展開子目錄；縮排引導線標示層級。長條代表佔父層比例。';
+    renderTree();
+  }
+  function renderTree(){
+    body.innerHTML = '';
+    const root = el('div', 'tree');
+    root.appendChild(renderNode(d.tree, d.tree.size, 0));
+    body.appendChild(root);
+  }
+  btnDrill.onclick = showDrill;
+  btnTree.onclick = showTree;
+  btnCollapse.onclick = renderTree;  // 重建即回到只展開頂層的狀態
+
+  showDrill();
+  return sec;
+}
+
+function buildDrill(d){
+  const wrap = el('div');
+  const crumb = el('div', 'breadcrumb');
+  const list = el('div');
+  wrap.append(crumb, list);
+  const stack = [d.tree];   // 根到目前節點
+
+  function render(){
+    // 麵包屑
+    crumb.innerHTML = '';
+    stack.forEach((n, i) => {
+      const last = i === stack.length - 1;
+      const c = el('span', 'crumb' + (last ? ' current' : ''));
+      c.textContent = n.name;
+      c.title = n.path || n.name;
+      if(!last) c.onclick = () => { stack.length = i + 1; render(); };
+      crumb.appendChild(c);
+      if(!last){ const s = el('span', 'crumb-sep'); s.textContent = '›'; crumb.appendChild(s); }
+    });
+
+    const cur = stack[stack.length - 1];
+    const parentSize = cur.size || 1;
+    list.innerHTML = '';
+
+    if(stack.length > 1){
+      const up = el('div', 'drow clickable uprow');
+      up.innerHTML = '<span class="ic">⬆</span><span class="nm">.. 上一層</span>';
+      up.onclick = () => { stack.pop(); render(); };
+      list.appendChild(up);
+    }
+
+    const kids = (cur.children || []).slice().sort((a,b) => b.size - a.size);
+    if(!kids.length){
+      const empty = el('div', 'hint'); empty.textContent = '（此項目沒有可展開的子內容）';
+      list.appendChild(empty);
+    }
+    kids.forEach(c => {
+      const canEnter = c.children && c.children.length;
+      const row = el('div', 'drow' + (canEnter ? ' clickable' : ''));
+      const pct = (c.size / parentSize * 100);
+      const ic = el('span', 'ic'); ic.textContent = c.is_aggregate ? '…' : (c.is_dir ? '📁' : '📄');
+      const nm = el('span', 'nm'); nm.textContent = c.name; nm.title = c.path || c.name;
+      const mb = el('span', 'minibar'); mb.innerHTML = '<span style="width:'+Math.min(pct,100)+'%"></span>';
+      const sz = el('span', 'sz'); sz.textContent = human(c.size);
+      const pc = el('span', 'pct'); pc.textContent = pct.toFixed(1)+'%';
+      row.append(ic, nm);
+      if(c.path && !c.is_aggregate) row.appendChild(makeOpenBtn(c.path));
+      if(c.cleanup){
+        const cl = el('span', 'cleanup'); cl.textContent = '可清理'; cl.title = c.cleanup;
+        row.appendChild(cl);
+      }
+      row.append(mb, sz, pc);
+      const chev = el('span', 'chev'); chev.textContent = canEnter ? '›' : '';
+      row.appendChild(chev);
+      if(canEnter) row.onclick = () => { stack.push(c); render(); };
+      list.appendChild(row);
+    });
+  }
+  render();
+  return wrap;
+}
+
 function renderNode(node, parentSize, depth){
   const row = document.createElement('div');
   const line = document.createElement('div');
@@ -308,6 +481,7 @@ function renderNode(node, parentSize, depth){
   pc.className = 'pct'; pc.textContent = pct.toFixed(1)+'%';
 
   line.appendChild(toggle); line.appendChild(name);
+  if(node.path && !node.is_aggregate) line.appendChild(makeOpenBtn(node.path));
   if(node.cleanup){
     const cl = document.createElement('span');
     cl.className='cleanup'; cl.textContent='可清理'; cl.title=node.cleanup;

@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--logical", action="store_true",
                    help="改用邏輯大小（st_size）。預設為實際磁碟佔用（size on disk），"
                         "稀疏/壓縮檔會反映真實佔用")
+    p.add_argument("--serve", action="store_true",
+                   help="啟動本機伺服器開啟報告，讓報告中的「📂 開啟」按鈕能真的用"
+                        "檔案總管開啟資料夾（按 Ctrl+C 結束）")
+    p.add_argument("--port", type=int, default=8765,
+                   help="--serve 模式使用的連接埠（預設 8765；被占用會自動換埠）")
     p.add_argument("--no-progress", action="store_true",
                    help="不顯示掃描進度")
     p.add_argument("--no-open", action="store_true",
@@ -79,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     abs_out = os.path.abspath(out)
     print(f"\n報告已產生：{abs_out}", file=sys.stderr)
+
+    if args.serve:
+        from .server import serve
+        roots = [r.root for r in results]
+        serve(abs_out, roots, port=args.port, open_browser=not args.no_open)
+        return 0
 
     if not args.no_open:
         try:
